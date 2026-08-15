@@ -1,11 +1,1 @@
-{
-  "creators": [
-    {
-      "affiliation": "Independent",
-      "name": "Bird, Haley Ann"
-    }
-  ],
-  "description": "Autonomous research session: genuine structural gaps across space/ocean/biology/earth - July 27 2026",
-  "publication_date": "2026-07-27",
-  "title": "structural-novelty-gaps-2026"
-}
+{"creators":[{"affiliation":"Independent","name":"Bird, Haley Ann"}],"description":"A dated autonomous research-session output examining structural gaps across space, ocean, biology, and earth.","publication_date":"2026-07-27","title":"structural-novelty-gaps-2026","version":"0.1.0","license":"SEE_LICENSE_FILE","keywords":["structural novelty","research gaps","autonomous research","space research","ocean research","biology research"]}
