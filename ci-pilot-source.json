@@ -2,17 +2,23 @@
   "purpose": "Free public-runner behavioral validation of haley-checks-core PR #3",
   "source_repository": "sENZ5hFx/haley-checks-core",
   "source_pull_request": 3,
-  "source_commit": "48dd0abb678b3586860b831fbc542f2a8e7e244a",
+  "source_commit": "33b232ea5b10eefe0a0373cb94b0b364741e6a87",
   "generated_at": "2026-08-23",
   "adaptations": [
     "Retry action references are repository-local because a public pilot cannot load a private cross-repository action."
   ],
   "source_blobs": {
     ".github/actions/retry-step/action.yml": "e0039ac5efa499c84c4a47d4afe49b770c4ca603",
-    ".github/workflows/reusable-checks.yml": "670b2e190906885afb785b945733f6ef1d18a8d4",
+    ".github/workflows/reusable-checks.yml": "9a171c5983dacb3c0e5a5dfba3bf7b3c288343ee",
     ".github/workflows/validate-evidence-gate.yml": "2ccda4ff09f3731a37b375aaa94b1641af23fbe6",
     "test-fixtures/python/example.py": "5b38b28734994ed9d36b0f2f59f2498bb84f5939",
     "test-fixtures/python/requirements.txt": "8e0e8841f28c51dda7aeb6c3d4e2ab0c9e1275f1",
     "test-fixtures/python/test_example.py": "11f53cde57b1bda1cf796f6d5d5a20e129ce4dec"
+  },
+  "previous_successful_run": {
+    "run_id": 32651337590,
+    "artifact_id": 9496263402,
+    "artifact_digest": "sha256:036187c37cd1686a598d0abaeb8d60ff45c98a7082ee6deaa9b2d158c562b6dd",
+    "note": "Passed before Node 24 action-major hardening; retained as audit history."
   }
 }
