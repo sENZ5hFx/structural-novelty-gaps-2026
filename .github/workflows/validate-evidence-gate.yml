@@ -1,0 +1,46 @@
+name: Validate Evidence Gate
+
+on:
+  pull_request:
+    paths:
+      - ".github/actions/retry-step/**"
+      - ".github/workflows/reusable-checks.yml"
+      - ".github/workflows/validate-evidence-gate.yml"
+      - "test-fixtures/python/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    uses: ./.github/workflows/reusable-checks.yml
+    with:
+      language: python
+      working-directory: test-fixtures/python
+      advisory: false
+      max-retries: 1
+      escalate-after: 3
+
+  verify-contract:
+    needs: evidence
+    runs-on: ubuntu-latest
+    env:
+      EVIDENCE_STATUS: ${{ needs.evidence.outputs.evidence-status }}
+      EVIDENCE_SUMMARY: ${{ needs.evidence.outputs.evidence-summary }}
+    steps:
+      - name: Verify reusable workflow outputs
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          status = os.environ["EVIDENCE_STATUS"]
+          summary = json.loads(os.environ["EVIDENCE_SUMMARY"])
+
+          assert status == "passed", status
+          assert summary["status"] == "passed", summary
+          for key in ("install", "lint", "test", "static", "build"):
+              assert summary[key] == "success", summary
+          assert summary["advisory"] is False, summary
+          PY
