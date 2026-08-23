@@ -1,0 +1,56 @@
+name: "Retry Step"
+description: "Runs a shell command with bounded exponential backoff"
+inputs:
+  command:
+    required: true
+    description: "Shell command to run"
+  working-directory:
+    required: false
+    default: "."
+    description: "Repository-relative directory in which to run the command"
+  max-attempts:
+    required: false
+    default: "3"
+  initial-backoff-seconds:
+    required: false
+    default: "5"
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        RETRY_COMMAND: ${{ inputs.command }}
+        MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+        INITIAL_BACKOFF_SECONDS: ${{ inputs.initial-backoff-seconds }}
+      run: |
+        set -u
+
+        case "$MAX_ATTEMPTS" in
+          ''|*[!0-9]*) echo "::error::max-attempts must be a positive integer"; exit 2 ;;
+        esac
+        case "$INITIAL_BACKOFF_SECONDS" in
+          ''|*[!0-9]*) echo "::error::initial-backoff-seconds must be a non-negative integer"; exit 2 ;;
+        esac
+        if [ "$MAX_ATTEMPTS" -lt 1 ]; then
+          echo "::error::max-attempts must be at least 1"
+          exit 2
+        fi
+
+        attempt=1
+        backoff="$INITIAL_BACKOFF_SECONDS"
+        until [ "$attempt" -gt "$MAX_ATTEMPTS" ]; do
+          echo "Attempt $attempt/$MAX_ATTEMPTS"
+          if bash -o pipefail -c "$RETRY_COMMAND"; then
+            exit 0
+          fi
+          if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+            echo "Attempt $attempt failed. Backing off ${backoff}s..."
+            sleep "$backoff"
+            backoff=$((backoff * 2))
+          fi
+          attempt=$((attempt + 1))
+        done
+
+        echo "All $MAX_ATTEMPTS attempts failed."
+        exit 1
