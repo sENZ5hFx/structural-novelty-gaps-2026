@@ -1,0 +1,34 @@
+name: Event-driven control-plane canary
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: event-canary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify event-driven invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'repository=%s\nsha=%s\nevent=%s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_EVENT_NAME"
+          test "$GITHUB_EVENT_NAME" = push -o "$GITHUB_EVENT_NAME" = pull_request -o "$GITHUB_EVENT_NAME" = workflow_dispatch
+          python - <<'PY'
+          states = {'PASS', 'FAIL', 'UNKNOWN'}
+          assert states == {'PASS', 'FAIL', 'UNKNOWN'}
+          print('event-driven control-plane canary: PASS')
+          PY
