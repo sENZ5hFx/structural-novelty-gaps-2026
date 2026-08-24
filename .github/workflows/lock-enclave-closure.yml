@@ -40,8 +40,10 @@ jobs:
       - name: Pin npm authority
         run: npm install --global npm@10.9.2 --no-audit --no-fund
 
-      - name: Generate package lock only
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Generate package lock from a clean solve
+        run: |
+          rm -f package-lock.json
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
       - name: Canonicalize generated lock bytes
         run: node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); fs.writeFileSync('package-lock.json', JSON.stringify(p)+'\\n')"
