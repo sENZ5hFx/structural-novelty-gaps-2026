@@ -49,6 +49,9 @@ jobs:
       - name: Prove frozen install consumes canonical lock
         run: npm ci --ignore-scripts --no-audit --no-fund
 
+      - name: Reject high or critical dependency vulnerabilities
+        run: npm audit --audit-level=high
+
       - name: Report lock identity
         run: |
           node -e "const p=require('./package-lock.json'); if(p.lockfileVersion!==3) process.exit(2); console.log(JSON.stringify({lockfileVersion:p.lockfileVersion,packages:Object.keys(p.packages||{}).length}))"
@@ -72,5 +75,8 @@ jobs:
           fi
           git config user.name 'lock-enclave[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'test(lock-enclave): persist canonical Closure lock'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git commit -m 'test(lock-enclave): persist audited Closure lock'
+          branch='${{ github.event.pull_request.head.ref }}'
+          git fetch origin "$branch"
+          git rebase "origin/$branch"
+          git push origin HEAD:"$branch"
