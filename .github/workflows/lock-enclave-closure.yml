@@ -43,15 +43,19 @@ jobs:
       - name: Generate package lock only
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
-      - name: Prove frozen install consumes generated lock
+      - name: Canonicalize generated lock bytes
+        run: node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); fs.writeFileSync('package-lock.json', JSON.stringify(p)+'\\n')"
+
+      - name: Prove frozen install consumes canonical lock
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Report lock identity
         run: |
           node -e "const p=require('./package-lock.json'); if(p.lockfileVersion!==3) process.exit(2); console.log(JSON.stringify({lockfileVersion:p.lockfileVersion,packages:Object.keys(p.packages||{}).length}))"
+          wc -c package-lock.json
           sha256sum package.json package-lock.json
 
-      - name: Upload generated lock
+      - name: Upload canonical generated lock
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: closure-engine-package-lock
@@ -59,7 +63,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-      - name: Persist generated lock on temporary enclave branch
+      - name: Persist canonical lock on temporary enclave branch
         run: |
           git add package-lock.json
           if git diff --cached --quiet; then
@@ -68,5 +72,5 @@ jobs:
           fi
           git config user.name 'lock-enclave[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'test(lock-enclave): persist generated Closure lock'
+          git commit -m 'test(lock-enclave): persist canonical Closure lock'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
