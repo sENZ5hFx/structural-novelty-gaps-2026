@@ -18,7 +18,7 @@ jobs:
   resolve-and-prove:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: enclave/ppgc
@@ -42,11 +42,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Pin npm and verify backend intent identity
+      - name: Pin runtime authorities and verify private dependency intents
         run: |
           npm install --global npm@10.9.2 --no-audit --no-fund
           test "$(npm --version)" = "10.9.2"
           test "$(sha256sum backend-requirements.in | cut -d' ' -f1)" = "f6edeed8670afc4d2fdb21e5a217f326dee98f8abc7388c1612b08d16a3437fd"
+          test "$(sha256sum console-requirements.in | cut -d' ' -f1)" = "291bc8eb84e0590d3f7ceb4ed2d39008090a64b1d109293d543c415ed45d7d43"
+          node --version
+          npm --version
+          python --version
 
       - name: Resolve current exact reduced frontend toolchain
         run: |
@@ -93,24 +97,61 @@ jobs:
           npm cache verify
           tar -czf frontend-npm-cache.tgz -C "$HOME/.npm" _cacache
 
-      - name: Resolve exact Python 3.11 transitive authority
+      - name: Install Python resolution and audit tools
         run: |
           python -m pip install --disable-pip-version-check --upgrade pip==26.2.1
           python -m pip install --disable-pip-version-check pip-tools pip-audit
+
+      - name: Resolve exact backend Python 3.11 transitive authority
+        run: |
           python -m piptools compile \
             --resolver=backtracking \
             --generate-hashes \
             --strip-extras \
             --output-file backend-requirements.lock.txt \
             backend-requirements.in
-          python -m venv verify-venv
-          verify-venv/bin/python -m pip install --disable-pip-version-check --upgrade pip==26.2.1
-          verify-venv/bin/python -m pip install --disable-pip-version-check --require-hashes -r backend-requirements.lock.txt
-          verify-venv/bin/python -m pip check
+          python -m venv backend-verify-venv
+          backend-verify-venv/bin/python -m pip install --disable-pip-version-check --upgrade pip==26.2.1
+          backend-verify-venv/bin/python -m pip install --disable-pip-version-check --require-hashes -r backend-requirements.lock.txt
+          backend-verify-venv/bin/python -m pip check
           python -m pip_audit -r backend-requirements.lock.txt
-          mkdir -p wheelhouse
-          python -m pip download --disable-pip-version-check --require-hashes -r backend-requirements.lock.txt -d wheelhouse
-          tar -czf backend-wheelhouse-linux-x64-py311.tgz wheelhouse
+          mkdir -p backend-wheelhouse
+          python -m pip download --disable-pip-version-check --require-hashes -r backend-requirements.lock.txt -d backend-wheelhouse
+          tar -czf backend-wheelhouse-linux-x64-py311.tgz backend-wheelhouse
+
+      - name: Resolve and audit console Python 3.11 transitive authority
+        run: |
+          python -m piptools compile \
+            --resolver=backtracking \
+            --generate-hashes \
+            --strip-extras \
+            --output-file console-requirements.lock.txt \
+            console-requirements.in
+          python -m venv console-verify-venv
+          console-verify-venv/bin/python -m pip install --disable-pip-version-check --upgrade pip==26.2.1
+          console-verify-venv/bin/python -m pip install --disable-pip-version-check --require-hashes -r console-requirements.lock.txt
+          console-verify-venv/bin/python -m pip check
+          python -m pip_audit -r console-requirements.lock.txt
+          mkdir -p console-wheelhouse
+          python -m pip download --disable-pip-version-check --require-hashes -r console-requirements.lock.txt -d console-wheelhouse
+          tar -czf console-wheelhouse-linux-x64-py311.tgz console-wheelhouse
+
+      - name: Export exact public runtime toolchains
+        run: |
+          NODE_ROOT="$(dirname "$(dirname "$(command -v node)")")"
+          PY_ROOT="$(python -c 'import sys; print(sys.prefix)')"
+          printf '%s\n' "$NODE_ROOT" > node-runtime-root.txt
+          printf '%s\n' "$PY_ROOT" > python-runtime-root.txt
+          test "$NODE_ROOT" = "/opt/hostedtoolcache/node/20.20.2/x64"
+          test "$PY_ROOT" = "/opt/hostedtoolcache/Python/3.11.16/x64"
+          tar -czf node20-runtime-linux-x64.tgz -C "$(dirname "$NODE_ROOT")" "$(basename "$NODE_ROOT")"
+          tar -czf python311-runtime-linux-x64.tgz -C "$(dirname "$PY_ROOT")" "$(basename "$PY_ROOT")"
+          "$NODE_ROOT/bin/node" --version
+          "$NODE_ROOT/bin/npm" --version
+          "$PY_ROOT/bin/python" --version
+
+      - name: Report authority identities
+        run: |
           python - <<'PY'
           import importlib.metadata as m, json, sys
           data = {
@@ -122,9 +163,6 @@ jobs:
           open('python-resolver-versions.json','w').write(json.dumps(data, indent=2)+'\n')
           print(json.dumps(data, indent=2))
           PY
-
-      - name: Report authority identities
-        run: |
           sha256sum \
             frontend-intent.json \
             frontend-package.json \
@@ -133,13 +171,24 @@ jobs:
             backend-requirements.in \
             backend-requirements.lock.txt \
             backend-wheelhouse-linux-x64-py311.tgz \
+            console-requirements.in \
+            console-requirements.lock.txt \
+            console-wheelhouse-linux-x64-py311.tgz \
+            node20-runtime-linux-x64.tgz \
+            python311-runtime-linux-x64.tgz \
+            node-runtime-root.txt \
+            python-runtime-root.txt \
             python-resolver-versions.json | tee SHA256SUMS
-          wc -c frontend-package.json frontend-package-lock.json backend-requirements.lock.txt frontend-npm-cache.tgz backend-wheelhouse-linux-x64-py311.tgz
+          wc -c \
+            frontend-package.json frontend-package-lock.json frontend-npm-cache.tgz \
+            backend-requirements.lock.txt backend-wheelhouse-linux-x64-py311.tgz \
+            console-requirements.lock.txt console-wheelhouse-linux-x64-py311.tgz \
+            node20-runtime-linux-x64.tgz python311-runtime-linux-x64.tgz
 
-      - name: Upload dependency authority and offline caches
+      - name: Upload dependency authority and portable runtimes
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ppgc-dependency-authority
+          name: ppgc-complete-authority
           path: |
             enclave/ppgc/frontend-package.json
             enclave/ppgc/frontend-package-lock.json
@@ -147,6 +196,13 @@ jobs:
             enclave/ppgc/backend-requirements.in
             enclave/ppgc/backend-requirements.lock.txt
             enclave/ppgc/backend-wheelhouse-linux-x64-py311.tgz
+            enclave/ppgc/console-requirements.in
+            enclave/ppgc/console-requirements.lock.txt
+            enclave/ppgc/console-wheelhouse-linux-x64-py311.tgz
+            enclave/ppgc/node20-runtime-linux-x64.tgz
+            enclave/ppgc/python311-runtime-linux-x64.tgz
+            enclave/ppgc/node-runtime-root.txt
+            enclave/ppgc/python-runtime-root.txt
             enclave/ppgc/python-resolver-versions.json
             enclave/ppgc/SHA256SUMS
           if-no-files-found: error
