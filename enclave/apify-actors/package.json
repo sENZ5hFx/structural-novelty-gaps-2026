@@ -1,0 +1,17 @@
+{
+  "name": "apify-actor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": ">=20 <21"
+  },
+  "dependencies": {
+    "apify": "^3.0.0"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "validate": "node scripts/validate.mjs"
+  }
+}
