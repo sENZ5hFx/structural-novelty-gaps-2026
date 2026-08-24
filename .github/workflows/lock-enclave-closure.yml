@@ -8,14 +8,14 @@ on:
       - '.github/workflows/lock-enclave-closure.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: lock-enclave-closure-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  generate-and-prove:
+  prove-and-export-cache:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -27,80 +27,60 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Set up Node 20
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: enclave/closure-engine/package.json
 
       - name: Pin npm authority
         run: npm install --global npm@10.9.2 --no-audit --no-fund
 
-      - name: Generate package lock from a clean solve
-        run: |
-          rm -f package-lock.json
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-
-      - name: Canonicalize generated lock bytes
-        run: node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); fs.writeFileSync('package-lock.json', JSON.stringify(p)+'\\n')"
-
-      - name: Bind generated lock to exact manifest
+      - name: Bind persisted lock to audited authority
         run: |
           node <<'NODE'
           const fs = require('fs');
+          const crypto = require('crypto');
+          const expectedManifest = '5a1571c50a1bc0e27aa95f670db991e523f446bbda8aa2413888dd78ed3ded68';
+          const expectedLock = '30c912f9e6230de6786dc04760951b2da98850a7f00fa18b6e2f11da9b5a4bcc';
+          const digest = (path) => crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex');
+          if (digest('package.json') !== expectedManifest) throw new Error('manifest identity drifted');
+          if (digest('package-lock.json') !== expectedLock) throw new Error('lock identity drifted');
           const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
           const root = lock.packages && lock.packages[''];
           const entries = (value) => Object.entries(value || {}).sort(([a], [b]) => a.localeCompare(b));
-          if (lock.lockfileVersion !== 3 || !root) {
-            throw new Error('generated lock is not a root-bearing lockfileVersion 3 object');
-          }
-          for (const section of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-            const expected = entries(manifest[section]);
-            const observed = entries(root[section]);
-            if (JSON.stringify(expected) !== JSON.stringify(observed)) {
-              console.error(JSON.stringify({section, expected, observed}, null, 2));
-              throw new Error(`generated lock root does not match package.json ${section}`);
+          if (lock.lockfileVersion !== 3 || !root) throw new Error('lock is not a root-bearing v3 lock');
+          for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
+            if (JSON.stringify(entries(manifest[section])) !== JSON.stringify(entries(root[section]))) {
+              throw new Error(`lock root does not match package.json ${section}`);
             }
           }
-          console.log('generated lock root exactly matches package.json dependency authority');
+          console.log('audited manifest/lock authority: PASS');
           NODE
 
-      - name: Prove frozen install consumes canonical lock
+      - name: Reset cache to exact graph only
+        run: npm cache clean --force
+
+      - name: Prove frozen install and warm exact cache
         run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Reject high or critical dependency vulnerabilities
         run: npm audit --audit-level=high
 
-      - name: Report lock identity
+      - name: Verify and package exact npm cache
         run: |
-          node -e "const p=require('./package-lock.json'); if(p.lockfileVersion!==3) process.exit(2); console.log(JSON.stringify({lockfileVersion:p.lockfileVersion,packages:Object.keys(p.packages||{}).length}))"
-          wc -c package-lock.json
-          sha256sum package.json package-lock.json
+          npm cache verify
+          tar -czf closure-engine-npm-cache.tgz -C "$HOME/.npm" _cacache
+          sha256sum closure-engine-npm-cache.tgz
+          wc -c closure-engine-npm-cache.tgz
 
-      - name: Upload canonical generated lock
+      - name: Upload exact npm cache
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: closure-engine-package-lock
-          path: enclave/closure-engine/package-lock.json
+          name: closure-engine-npm-cache-linux-x64
+          path: enclave/closure-engine/closure-engine-npm-cache.tgz
           if-no-files-found: error
           retention-days: 1
-
-      - name: Persist canonical lock on temporary enclave branch
-        run: |
-          git add package-lock.json
-          if git diff --cached --quiet; then
-            echo 'Generated lock already persisted'
-            exit 0
-          fi
-          git config user.name 'lock-enclave[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'test(lock-enclave): persist audited Closure lock'
-          branch='${{ github.event.pull_request.head.ref }}'
-          git fetch origin "$branch"
-          git rebase "origin/$branch"
-          git push origin HEAD:"$branch"
+          compression-level: 0
