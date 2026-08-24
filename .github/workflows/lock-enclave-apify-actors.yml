@@ -1,0 +1,84 @@
+name: Lock enclave — Apify Actors
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'enclave/apify-actors/**'
+      - '.github/workflows/lock-enclave-apify-actors.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lock-enclave-apify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  generate-and-prove:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: enclave/apify-actors
+    steps:
+      - name: Checkout exact enclave head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Node 20
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: enclave/apify-actors/package.json
+
+      - name: Pin npm authority
+        run: npm install --global npm@10.9.2 --no-audit --no-fund
+
+      - name: Generate package lock from a clean solve
+        run: |
+          rm -f package-lock.json
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Canonicalize generated lock bytes
+        run: node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); fs.writeFileSync('package-lock.json', JSON.stringify(p)+'\\n')"
+
+      - name: Prove frozen install consumes canonical lock
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Reject high or critical dependency vulnerabilities
+        run: npm audit --audit-level=high
+
+      - name: Report lock identity
+        run: |
+          node -e "const p=require('./package-lock.json'); if(p.lockfileVersion!==3) process.exit(2); console.log(JSON.stringify({lockfileVersion:p.lockfileVersion,packages:Object.keys(p.packages||{}).length}))"
+          wc -c package-lock.json
+          sha256sum package.json package-lock.json
+
+      - name: Upload canonical generated lock
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: apify-actors-package-lock
+          path: enclave/apify-actors/package-lock.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Persist canonical lock on temporary enclave branch
+        run: |
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo 'Generated lock already persisted'
+            exit 0
+          fi
+          git config user.name 'lock-enclave[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'test(lock-enclave): persist audited Apify lock'
+          branch='${{ github.event.pull_request.head.ref }}'
+          git fetch origin "$branch"
+          git rebase "origin/$branch"
+          git push origin HEAD:"$branch"
