@@ -55,12 +55,13 @@ jobs:
           const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
           const root = lock.packages && lock.packages[''];
+          const entries = (value) => Object.entries(value || {}).sort(([a], [b]) => a.localeCompare(b));
           if (lock.lockfileVersion !== 3 || !root) {
             throw new Error('generated lock is not a root-bearing lockfileVersion 3 object');
           }
           for (const section of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-            const expected = manifest[section] || {};
-            const observed = root[section] || {};
+            const expected = entries(manifest[section]);
+            const observed = entries(root[section]);
             if (JSON.stringify(expected) !== JSON.stringify(observed)) {
               console.error(JSON.stringify({section, expected, observed}, null, 2));
               throw new Error(`generated lock root does not match package.json ${section}`);
