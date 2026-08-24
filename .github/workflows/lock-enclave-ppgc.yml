@@ -1,0 +1,154 @@
+name: Dependency enclave — PPGC
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'enclave/ppgc/**'
+      - '.github/workflows/lock-enclave-ppgc.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lock-enclave-ppgc-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-and-prove:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: enclave/ppgc
+    steps:
+      - name: Checkout exact enclave head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node 20
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: enclave/ppgc/frontend-intent.json
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Pin npm and verify backend intent identity
+        run: |
+          npm install --global npm@10.9.2 --no-audit --no-fund
+          test "$(npm --version)" = "10.9.2"
+          test "$(sha256sum backend-requirements.in | cut -d' ' -f1)" = "f6edeed8670afc4d2fdb21e5a217f326dee98f8abc7388c1612b08d16a3437fd"
+
+      - name: Resolve current exact reduced frontend toolchain
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const cp = require('child_process');
+          const intent = JSON.parse(fs.readFileSync('frontend-intent.json', 'utf8'));
+          const query = (spec) => {
+            const raw = cp.execFileSync('npm', ['view', spec, 'version', '--json'], {encoding:'utf8'}).trim();
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed.at(-1) : parsed;
+          };
+          const exact = (items) => Object.fromEntries(items.map((spec) => {
+            const name = spec.startsWith('@') ? spec.split('@').slice(0,2).join('@') : spec.split('@')[0];
+            return [name, query(spec)];
+          }));
+          const pkg = {
+            name: intent.name,
+            version: intent.version,
+            private: true,
+            type: 'module',
+            packageManager: intent.packageManager,
+            engines: intent.engines,
+            scripts: intent.scripts,
+            dependencies: exact(intent.dependencies),
+            devDependencies: exact(intent.devDependencies),
+          };
+          fs.writeFileSync('frontend-package.json', JSON.stringify(pkg, null, 2) + '\n');
+          console.log(JSON.stringify(pkg, null, 2));
+          NODE
+
+      - name: Generate and prove exact frontend lock
+        run: |
+          rm -rf frontend-work "$HOME/.npm/_cacache"
+          mkdir frontend-work
+          cp frontend-package.json frontend-work/package.json
+          cd frontend-work
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package-lock.json','utf8')); fs.writeFileSync('package-lock.json', JSON.stringify(p)+'\\n')"
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm audit --audit-level=high
+          cp package-lock.json ../frontend-package-lock.json
+          cd ..
+          npm cache verify
+          tar -czf frontend-npm-cache.tgz -C "$HOME/.npm" _cacache
+
+      - name: Resolve exact Python 3.11 transitive authority
+        run: |
+          python -m pip install --disable-pip-version-check --upgrade pip==26.2.1
+          python -m pip install --disable-pip-version-check pip-tools pip-audit
+          python -m piptools compile \
+            --resolver=backtracking \
+            --generate-hashes \
+            --strip-extras \
+            --output-file backend-requirements.lock.txt \
+            backend-requirements.in
+          python -m venv verify-venv
+          verify-venv/bin/python -m pip install --disable-pip-version-check --upgrade pip==26.2.1
+          verify-venv/bin/python -m pip install --disable-pip-version-check --require-hashes -r backend-requirements.lock.txt
+          verify-venv/bin/python -m pip check
+          python -m pip_audit -r backend-requirements.lock.txt
+          mkdir -p wheelhouse
+          python -m pip download --disable-pip-version-check --require-hashes -r backend-requirements.lock.txt -d wheelhouse
+          tar -czf backend-wheelhouse-linux-x64-py311.tgz wheelhouse
+          python - <<'PY'
+          import importlib.metadata as m, json, sys
+          data = {
+            'python': sys.version.split()[0],
+            'pip': m.version('pip'),
+            'pip-tools': m.version('pip-tools'),
+            'pip-audit': m.version('pip-audit'),
+          }
+          open('python-resolver-versions.json','w').write(json.dumps(data, indent=2)+'\n')
+          print(json.dumps(data, indent=2))
+          PY
+
+      - name: Report authority identities
+        run: |
+          sha256sum \
+            frontend-intent.json \
+            frontend-package.json \
+            frontend-package-lock.json \
+            frontend-npm-cache.tgz \
+            backend-requirements.in \
+            backend-requirements.lock.txt \
+            backend-wheelhouse-linux-x64-py311.tgz \
+            python-resolver-versions.json | tee SHA256SUMS
+          wc -c frontend-package.json frontend-package-lock.json backend-requirements.lock.txt frontend-npm-cache.tgz backend-wheelhouse-linux-x64-py311.tgz
+
+      - name: Upload dependency authority and offline caches
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ppgc-dependency-authority
+          path: |
+            enclave/ppgc/frontend-package.json
+            enclave/ppgc/frontend-package-lock.json
+            enclave/ppgc/frontend-npm-cache.tgz
+            enclave/ppgc/backend-requirements.in
+            enclave/ppgc/backend-requirements.lock.txt
+            enclave/ppgc/backend-wheelhouse-linux-x64-py311.tgz
+            enclave/ppgc/python-resolver-versions.json
+            enclave/ppgc/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
