@@ -47,7 +47,7 @@ jobs:
           npm install --global npm@10.9.2 --no-audit --no-fund
           test "$(npm --version)" = "10.9.2"
           test "$(sha256sum backend-requirements.in | cut -d' ' -f1)" = "f6edeed8670afc4d2fdb21e5a217f326dee98f8abc7388c1612b08d16a3437fd"
-          test "$(sha256sum console-requirements.in | cut -d' ' -f1)" = "291bc8eb84e0590d3f7ceb4ed2d39008090a64b1d109293d543c415ed45d7d43"
+          test "$(sha256sum console-requirements.in | cut -d' ' -f1)" = "f029ae219e7fdf752320c7e1afb102f96d8661ba77774337610c211d0c64a778"
           node --version
           npm --version
           python --version
