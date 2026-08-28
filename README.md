@@ -1,18 +1,9 @@
-# structural-novelty-gaps-2026
+# Historical public research record — disclosure review
 
-Autonomous research session exploring candidate structural gaps across space, ocean, biology, and Earth systems — July 27, 2026.
+This repository contains an AI-assisted research-session record that was previously made public.
 
-## Scope
+The current default branch has been intentionally minimized while disclosure and protection strategy are reviewed. Detailed material from earlier public commits remains part of the historical public record; this change does **not** undo or retract prior disclosure.
 
-This repository preserves a larger AI-assisted research corpus generated to identify potentially underexplored structures, questions, and cross-domain connections.
+No current statement here should be treated as proof of novelty, scientific validation, peer review, patentability, filing status, patent-pending status, or legal priority.
 
-## Evidence boundary
-
-- “Genuine,” “structural gap,” and “novelty” labels are research hypotheses/classifications, not independent literature-wide determinations.
-- The repository's size or timestamp does not establish correctness, novelty, scientific consensus, patentability, or legal priority.
-- Material claims should be checked against primary literature and current evidence before reliance.
-- Generated synthesis may include inference, unknowns, or incomplete source coverage.
-
-## Intended use
-
-Use as a timestamped research corpus and candidate-question source for deeper, source-bound investigation.
+Historical commits are preserved for provenance and future review. No additional detailed research or enabling mechanics should be added to the public branch without an explicit disclosure decision.
