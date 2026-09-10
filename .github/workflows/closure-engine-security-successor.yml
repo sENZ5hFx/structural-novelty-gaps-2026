@@ -1,0 +1,101 @@
+name: Materialize Closure Engine security successor
+
+on:
+  push:
+    branches:
+      - closure-engine-security-successor-20260910
+    paths:
+      - .github/workflows/closure-engine-security-successor.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout enclave branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - name: Set up exact Node authority
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          check-latest: false
+          package-manager-cache: false
+
+      - name: Install exact npm authority
+        run: npm install --global npm@10.9.2 && npm --version | grep -Fx '10.9.2'
+
+      - name: Reproduce audited security successor
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node --version)" = 'v24.19.0'
+          work="$(mktemp -d)"
+          cp enclave/closure-engine/package-lock.json "$work/package-lock.json"
+          test "$(wc -c < "$work/package-lock.json" | tr -d ' ')" = '200937'
+          test "$(sha256sum "$work/package-lock.json" | awk '{print $1}')" = '30c912f9e6230de6786dc04760951b2da98850a7f00fa18b6e2f11da9b5a4bcc'
+          cat > "$work/package.json" <<'JSON'
+          {
+            "name": "closure-engine",
+            "version": "0.1.0",
+            "private": true,
+            "packageManager": "npm@10.9.2",
+            "engines": {
+              "node": ">=24.19.0 <25",
+              "npm": "10.9.2"
+            },
+            "scripts": {
+              "dev": "next dev",
+              "build": "next build",
+              "start": "next start",
+              "lint": "eslint .",
+              "typecheck": "tsc --noEmit",
+              "test": "node --test src/lib/query.test.mjs",
+              "validate": "node scripts/validate.mjs"
+            },
+            "dependencies": {
+              "next": "16.3.2",
+              "react": "19.2.7",
+              "react-dom": "19.2.7",
+              "@react-pdf/renderer": "4.5.1",
+              "clsx": "^2.1.1",
+              "tailwind-merge": "^2.3.0"
+            },
+            "devDependencies": {
+              "@types/node": "^20",
+              "@types/react": "^19",
+              "@types/react-dom": "^19",
+              "autoprefixer": "^10.4.19",
+              "eslint": "9.39.5",
+              "eslint-config-next": "16.3.2",
+              "postcss": "^8.5.23",
+              "tailwindcss": "^3.4.4",
+              "typescript": "^5"
+            }
+          }
+          JSON
+          cd "$work"
+          npm install --package-lock-only --save-exact next@16.3.4 eslint-config-next@16.3.4 --ignore-scripts --no-audit --no-fund
+          npm audit fix --package-lock-only --ignore-scripts --no-fund
+          npm audit --audit-level=high
+          test "$(wc -c < package-lock.json | tr -d ' ')" = '260500'
+          test "$(sha256sum package-lock.json | awk '{print $1}')" = '67bf67c32492d3c7872b5ecb94ccc8fc8222a668982a52330a82f169dfd4ce4d'
+          test "$(git hash-object package-lock.json)" = '92667c4255dc9ab0961ae81728b15264cdcfb353'
+          cp package-lock.json "$GITHUB_WORKSPACE/enclave/closure-engine/package-lock.security-successor-20260910.json"
+
+      - name: Commit content-addressed successor object
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add enclave/closure-engine/package-lock.security-successor-20260910.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'chore(lock): record Closure Engine security successor object'
+          git push origin HEAD:closure-engine-security-successor-20260910
